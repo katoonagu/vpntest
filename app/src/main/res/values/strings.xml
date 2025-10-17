@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OneClickVPN</string>
+    <string name="vpn_action_connect">Подключить</string>
+    <string name="vpn_action_disconnect">Отключить</string>
+    <string name="vpn_status_disconnected">Disconnected</string>
+    <string name="vpn_status_connecting">Connecting…</string>
+    <string name="vpn_status_connected">Connected</string>
+    <string name="vpn_select_profile">Выбрать профиль</string>
+    <string name="vpn_selected_profile">Текущий профиль: %1$s</string>
+    <string name="vpn_bytes_template">Вход: %1$s · Выход: %2$s</string>
+</resources>

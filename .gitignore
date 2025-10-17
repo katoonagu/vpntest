@@ -1,0 +1,32 @@
+﻿# --- Android / Gradle ---
+.gradle/
+build/
+**/build/
+local.properties
+*.iml
+.idea/
+*.log
+
+# --- Android artifacts ---
+*.apk
+*.aab
+*.ap_
+output.json
+
+# --- WireGuard configs (private!) ---
+app/src/main/assets/wg/*.conf
+
+# --- Keystores / signing (private!) ---
+*.jks
+*.keystore
+signing.properties
+
+# --- Codex / env / misc ---
+.codex/
+.codex_ready.json
+.env
+.DS_Store
+Thumbs.db
+
+# --- OS cruft ---
+*.tmp
