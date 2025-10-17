@@ -1,4 +1,5 @@
 package app.oneclick.vpn.vpn
+package app.oneclick.vpn.vpn
 
 import android.app.Notification
 import android.app.NotificationChannel

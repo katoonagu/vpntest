@@ -1,7 +1,5 @@
 package app.oneclick.vpn.vpn
 
-package app.oneclick.vpn.vpn
-
 import com.wireguard.config.Config
 import java.io.ByteArrayInputStream
 import kotlinx.coroutines.CoroutineScope
@@ -15,6 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.text.Charsets
 
 class WgController(
     dispatcherScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
