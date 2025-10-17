@@ -11,6 +11,7 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import app.oneclick.vpn.BuildConfig
 import app.oneclick.vpn.R
 import app.oneclick.vpn.data.VpnRepository
 import app.oneclick.vpn.ui.MainActivity
@@ -28,31 +29,33 @@ import kotlinx.coroutines.launch
 
 class OneClickVpnService : VpnService() {
 
-    private val serviceScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val serviceScope: CoroutineScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val repository by lazy { VpnRepository(applicationContext) }
     private val controllerScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val controller = WgController(controllerScope)
+    private val controller: TunnelController =
+        if (BuildConfig.DEMO) FakeWgController() else WgController(controllerScope)
     private var stateJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification(VpnState.Disconnected))
+        startForeground(NOTIFICATION_ID, buildNotification(TunnelState.Disconnected))
         stateJob = serviceScope.launch {
-            controller.observeState().collect { state ->
+            controller.state.collect { state ->
                 updateGlobalState(state)
                 when (state) {
-                    VpnState.Disconnected -> {
+                    TunnelState.Disconnected -> {
                         NotificationManagerCompat.from(this@OneClickVpnService)
                             .notify(NOTIFICATION_ID, buildNotification(state))
                         stopForeground(STOP_FOREGROUND_DETACH)
                     }
 
-                    VpnState.Connecting, is VpnState.Connected -> {
+                    TunnelState.Connecting, is TunnelState.Connected -> {
                         startForeground(NOTIFICATION_ID, buildNotification(state))
                     }
 
-                    is VpnState.Error -> {
+                    is TunnelState.Error -> {
                         NotificationManagerCompat.from(this@OneClickVpnService)
                             .notify(NOTIFICATION_ID, buildNotification(state))
                     }
@@ -77,7 +80,7 @@ class OneClickVpnService : VpnService() {
             ACTION_TOGGLE -> {
                 val asset = intent.getStringExtra(EXTRA_PROFILE)
                     ?: repository.currentProfile()
-                if (stateFlow.value is VpnState.Connected || stateFlow.value is VpnState.Connecting) {
+                if (stateFlow.value is TunnelState.Connected || stateFlow.value is TunnelState.Connecting) {
                     disconnect()
                 } else {
                     connect(asset)
@@ -94,9 +97,12 @@ class OneClickVpnService : VpnService() {
 
     override fun onDestroy() {
         stateJob?.cancel()
-        controller.disconnect()
+        serviceScope.launch {
+            controller.disconnect()
+        }
         controllerScope.cancel()
         repository.close()
+        serviceScope.cancel()
         super.onDestroy()
     }
 
@@ -109,10 +115,12 @@ class OneClickVpnService : VpnService() {
     }
 
     private fun disconnect() {
-        controller.disconnect()
+        serviceScope.launch {
+            controller.disconnect()
+        }
     }
 
-    private fun buildNotification(state: VpnState): Notification {
+    private fun buildNotification(state: TunnelState): Notification {
         val pendingIntent = PendingIntent.getActivity(
             this,
             0,
@@ -121,20 +129,20 @@ class OneClickVpnService : VpnService() {
         )
 
         val title = when (state) {
-            is VpnState.Connected -> getString(R.string.vpn_status_connected)
-            VpnState.Connecting -> getString(R.string.vpn_status_connecting)
-            VpnState.Disconnected -> getString(R.string.vpn_status_disconnected)
-            is VpnState.Error -> getString(R.string.vpn_status_disconnected)
+            is TunnelState.Connected -> getString(R.string.vpn_status_connected)
+            TunnelState.Connecting -> getString(R.string.vpn_status_connecting)
+            TunnelState.Disconnected -> getString(R.string.vpn_status_disconnected)
+            is TunnelState.Error -> getString(R.string.vpn_status_disconnected)
         }
 
         val text = when (state) {
-            is VpnState.Connected -> getString(
+            is TunnelState.Connected -> getString(
                 R.string.vpn_bytes_template,
-                formatBytes(state.bytesIn),
-                formatBytes(state.bytesOut)
+                formatBytes(state.rxBytes),
+                formatBytes(state.txBytes)
             )
 
-            is VpnState.Error -> state.message
+            is TunnelState.Error -> state.message
             else -> repository.currentProfile()
         }
 
@@ -144,7 +152,7 @@ class OneClickVpnService : VpnService() {
             .setContentText(text)
             .setContentIntent(pendingIntent)
             .setOnlyAlertOnce(true)
-            .setOngoing(state is VpnState.Connected || state is VpnState.Connecting)
+            .setOngoing(state is TunnelState.Connected || state is TunnelState.Connecting)
             .build()
     }
 
@@ -166,7 +174,7 @@ class OneClickVpnService : VpnService() {
         notificationManager?.createNotificationChannel(channel)
     }
 
-    private fun updateGlobalState(state: VpnState) {
+    private fun updateGlobalState(state: TunnelState) {
         stateFlowInternal.value = state
     }
 
@@ -179,10 +187,10 @@ class OneClickVpnService : VpnService() {
         const val ACTION_TOGGLE = "app.oneclick.vpn.action.TOGGLE"
         const val EXTRA_PROFILE = "extra_profile"
 
-        private val stateFlowInternal = MutableStateFlow<VpnState>(VpnState.Disconnected)
-        val stateFlow: StateFlow<VpnState> = stateFlowInternal
+        private val stateFlowInternal = MutableStateFlow<TunnelState>(TunnelState.Disconnected)
+        val stateFlow: StateFlow<TunnelState> = stateFlowInternal
 
-        fun observeState(): StateFlow<VpnState> = stateFlow
+        fun observeState(): StateFlow<TunnelState> = stateFlow
 
         fun connect(context: Context, assetPath: String) {
             val intent = Intent(context, OneClickVpnService::class.java).apply {

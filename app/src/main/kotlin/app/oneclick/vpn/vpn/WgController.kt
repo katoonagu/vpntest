@@ -1,66 +1,72 @@
 package app.oneclick.vpn.vpn
 
+package app.oneclick.vpn.vpn
+
 import com.wireguard.config.Config
 import java.io.ByteArrayInputStream
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 class WgController(
     dispatcherScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-) {
+) : TunnelController {
 
     private val scope = dispatcherScope
-    private val state = MutableStateFlow<VpnState>(VpnState.Disconnected)
     private val mutex = Mutex()
     private var statsJob: Job? = null
+    private val internalState = MutableStateFlow<TunnelState>(TunnelState.Disconnected)
 
-    fun observeState(): Flow<VpnState> = state.asStateFlow()
+    override val state: Flow<TunnelState> = internalState.asStateFlow()
 
-    suspend fun connect(configText: String) {
+    override suspend fun connect(configText: String) {
         mutex.withLock {
-            state.value = VpnState.Connecting
+            internalState.value = TunnelState.Connecting
+            statsJob?.cancel()
+            statsJob = null
             try {
                 val config = Config.parse(ByteArrayInputStream(configText.toByteArray(Charsets.UTF_8)))
-                val endpoint = config.peers.firstOrNull()?.endpoint?.toString()
+                val endpoint = config.peers.firstOrNull()?.endpoint?.toString() ?: "unknown"
 
-                // Simulate async tunnel setup before marking as connected.
+                // Simulated tunnel setup delay before marking as connected.
                 delay(300)
 
-                state.value = VpnState.Connected(endpoint = endpoint, bytesIn = 0, bytesOut = 0)
-                statsJob?.cancel()
+                internalState.value = TunnelState.Connected(endpoint = endpoint, rxBytes = 0, txBytes = 0)
                 statsJob = scope.launch {
                     var download = 0L
                     var upload = 0L
                     while (true) {
                         delay(1000)
-                        val current = state.value
-                        if (current is VpnState.Connected) {
+                        val current = internalState.value
+                        if (current is TunnelState.Connected) {
                             download += 1024
                             upload += 512
-                            state.value = current.copy(bytesIn = download, bytesOut = upload)
+                            internalState.value = current.copy(rxBytes = download, txBytes = upload)
                         } else {
                             break
                         }
                     }
                 }
             } catch (t: Throwable) {
-                state.value = VpnState.Error(t.message ?: "Invalid WireGuard configuration")
+                internalState.value =
+                    TunnelState.Error(t.message ?: "Invalid WireGuard configuration")
             }
         }
     }
 
-    fun disconnect() {
-        statsJob?.cancel()
-        statsJob = null
-        state.value = VpnState.Disconnected
+    override suspend fun disconnect() {
+        mutex.withLock {
+            statsJob?.cancel()
+            statsJob = null
+            internalState.value = TunnelState.Disconnected
+        }
     }
 }

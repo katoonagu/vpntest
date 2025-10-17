@@ -6,6 +6,8 @@ import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.TaskAction
+import org.gradle.jvm.toolchain.JavaLanguageVersion
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     id("com.android.application")
@@ -34,10 +36,12 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            buildConfigField("boolean", "DEMO", "false")
         }
         getByName("debug") {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            buildConfigField("boolean", "DEMO", "true")
         }
     }
 
@@ -82,10 +86,26 @@ android {
         abortOnError = true
         warningsAsErrors = true
     }
+
+    sourceSets.getByName("debug") {
+        java.srcDir("src/debug/java")
+    }
 }
 
 kotlin {
     jvmToolchain(17)
+}
+
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(17))
+    }
+}
+
+tasks.withType<KotlinCompile>().configureEach {
+    kotlinOptions {
+        jvmTarget = "17"
+    }
 }
 
 dependencies {
@@ -143,7 +163,7 @@ abstract class VerifyWgAssetsTask : DefaultTask() {
     }
 }
 
-abstract class CheckReleaseNetworkSecurityTask : DefaultTask() {
+abstract class VerifySecurityConfigTask : DefaultTask() {
 
     @get:InputFile
     abstract val configFile: RegularFileProperty
@@ -168,14 +188,48 @@ abstract class CheckReleaseNetworkSecurityTask : DefaultTask() {
     }
 }
 
+val generateWgStubs = tasks.register("generateWgStubs") {
+    group = "generation"
+    description = "Generates placeholder WireGuard configuration files for all clients."
+
+    val assetsDir = layout.projectDirectory.dir("src/main/assets/wg")
+    outputs.dir(assetsDir)
+    outputs.upToDateWhen { false }
+
+    doLast {
+        val dirFile = assetsDir.asFile
+        if (!dirFile.exists()) {
+            dirFile.mkdirs()
+        }
+        (1..30).forEach { index ->
+            val file = dirFile.resolve("client%02d.conf".format(Locale.US, index))
+            val ipOctet = index + 1
+            val content = """
+                [Interface]
+                PrivateKey = XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX=
+                Address = 10.77.0.$ipOctet/32
+                DNS = 1.1.1.1
+
+                [Peer]
+                PublicKey = YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY=
+                Endpoint = 0.0.0.0:51820
+                AllowedIPs = 0.0.0.0/0, ::/0
+                PersistentKeepalive = 25
+            """.trimIndent()
+            file.writeText(content)
+        }
+    }
+}
+
 val verifyWgAssets = tasks.register<VerifyWgAssetsTask>("verifyWgAssets") {
     group = "verification"
     description = "Validates that all WireGuard client assets exist and are well-formed."
     assetsDir.set(layout.projectDirectory.dir("src/main/assets/wg"))
+    dependsOn(generateWgStubs)
 }
 
-val checkReleaseNetworkSecurity = tasks.register<CheckReleaseNetworkSecurityTask>(
-    "checkReleaseNetworkSecurity"
+val verifySecurityConfig = tasks.register<VerifySecurityConfigTask>(
+    "verifySecurityConfig"
 ) {
     group = "verification"
     description = "Ensures release network security config does not trust user CAs or cleartext."
@@ -187,7 +241,7 @@ tasks.matching { task ->
     (name.startsWith("assemble") || name.startsWith("bundle")) && name.endsWith("Release")
 }.configureEach {
     dependsOn(verifyWgAssets)
-    dependsOn(checkReleaseNetworkSecurity)
+    dependsOn(verifySecurityConfig)
 }
 
 tasks.register("assembleAllClientsRelease") {

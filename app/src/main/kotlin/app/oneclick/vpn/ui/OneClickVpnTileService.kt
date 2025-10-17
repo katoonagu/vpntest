@@ -7,7 +7,7 @@ import android.service.quicksettings.TileService
 import app.oneclick.vpn.R
 import app.oneclick.vpn.data.VpnRepository
 import app.oneclick.vpn.vpn.OneClickVpnService
-import app.oneclick.vpn.vpn.VpnState
+import app.oneclick.vpn.vpn.TunnelState
 
 class OneClickVpnTileService : TileService() {
 
@@ -39,12 +39,12 @@ class OneClickVpnTileService : TileService() {
     private fun refreshTile() {
         val tile = qsTile ?: return
         when (OneClickVpnService.observeState().value) {
-            is VpnState.Connected -> {
+            is TunnelState.Connected -> {
                 tile.state = Tile.STATE_ACTIVE
                 tile.subtitle = getString(R.string.vpn_status_connected)
             }
 
-            VpnState.Connecting -> {
+            TunnelState.Connecting -> {
                 tile.state = Tile.STATE_UNAVAILABLE
                 tile.subtitle = getString(R.string.vpn_status_connecting)
             }

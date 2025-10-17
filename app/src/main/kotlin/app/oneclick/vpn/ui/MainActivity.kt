@@ -43,7 +43,7 @@ import app.oneclick.vpn.R
 import app.oneclick.vpn.data.VpnRepository
 import app.oneclick.vpn.ui.theme.OneClickVpnTheme
 import app.oneclick.vpn.vpn.OneClickVpnService
-import app.oneclick.vpn.vpn.VpnState
+import app.oneclick.vpn.vpn.TunnelState
 import java.util.Locale
 import kotlinx.coroutines.launch
 
@@ -127,7 +127,7 @@ class MainActivity : ComponentActivity() {
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     val isActive =
-                        vpnState is VpnState.Connected || vpnState is VpnState.Connecting
+                        vpnState is TunnelState.Connected || vpnState is TunnelState.Connecting
                     Button(
                         modifier = Modifier.weight(1f),
                         onClick = {
@@ -172,12 +172,12 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun StatusCard(
-        state: VpnState,
+        state: TunnelState,
         selectedProfile: String
     ) {
-        val endpoint = (state as? VpnState.Connected)?.endpoint ?: "-"
-        val bytesIn = (state as? VpnState.Connected)?.bytesIn ?: 0
-        val bytesOut = (state as? VpnState.Connected)?.bytesOut ?: 0
+        val endpoint = (state as? TunnelState.Connected)?.endpoint ?: "-"
+        val bytesIn = (state as? TunnelState.Connected)?.rxBytes ?: 0
+        val bytesOut = (state as? TunnelState.Connected)?.txBytes ?: 0
 
         Card(
             modifier = Modifier.fillMaxWidth()
@@ -188,10 +188,10 @@ class MainActivity : ComponentActivity() {
             ) {
                 Text(
                     text = when (state) {
-                        VpnState.Disconnected -> getString(R.string.vpn_status_disconnected)
-                        VpnState.Connecting -> getString(R.string.vpn_status_connecting)
-                        is VpnState.Connected -> getString(R.string.vpn_status_connected)
-                        is VpnState.Error -> state.message
+                        TunnelState.Disconnected -> getString(R.string.vpn_status_disconnected)
+                        TunnelState.Connecting -> getString(R.string.vpn_status_connecting)
+                        is TunnelState.Connected -> getString(R.string.vpn_status_connected)
+                        is TunnelState.Error -> state.message
                     },
                     style = MaterialTheme.typography.titleMedium
                 )
